@@ -16,16 +16,24 @@ void main() async {
     await mpvPlayer.start();
     await mpvPlayer.load("ytdl://www.youtube.com/watch?v=Fp8msa5uYsc");
 
-    mpvPlayer.on(MPVEvents.started, null, (ev, context) {
-      print("MPV STARTED PLAYING");
-    });
+    await mpvPlayer.play();
 
-    mpvPlayer.on(MPVEvents.status, null, (ev, context) {
-      print("MPV STATUS CHANGE: ${ev.eventData}");
-    });
-
-    mpvPlayer.on(MPVEvents.timeposition, null, (ev, context) {
-      print("MPV TIMEPOSITION ${ev.eventData}");
+    mpvPlayer.eventstream.listen((event) {
+      if (event.name == MPVEvents.started) {
+        print("MPV STARTED PLAYING");
+      }
+      if (event.name == MPVEvents.quit) {
+        print("MPV STARTED QUIT");
+      }
+      if (event.name == MPVEvents.crashed) {
+        print("MPV STARTED CRASHED");
+      }
+      if (event.name == MPVEvents.status) {
+        print("MPV STATUS CHANGE: ${event.data}");
+      }
+      if (event.name == MPVEvents.timeposition) {
+        print("MPV TIMEPOSITION ${event.data}");
+      }
     });
   } catch (e, stackTrace) {
     print(e);

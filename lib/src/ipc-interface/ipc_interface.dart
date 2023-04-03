@@ -8,15 +8,21 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-
-import 'package:eventify/eventify.dart';
 import 'package:mpv_dart/src/error.dart';
 import 'package:mpv_dart/src/ipc-interface/ipc_request.dart';
 
-class IPCInterface extends EventEmitter {
+class Event {
+  String name;
+  Object? data;
+  Event({required this.name, this.data});
+}
+
+class IPCInterface {
   bool debug;
   Socket? socket;
   late ErrorHandler _errorHandler;
+  final StreamController<Event> _events = StreamController<Event>();
+  late Stream<Event> eventstream = _events.stream.asBroadcastStream();
 
   IPCInterface({
     this.debug = false,
@@ -40,7 +46,7 @@ class IPCInterface extends EventEmitter {
     }
     // properly close the connection
     socket?.destroy();
-    emit("socket:done");
+    _events.add(Event(name: "socket:done"));
   }
 
   /// Catches any error thrown by the socket and outputs it to the console
@@ -52,7 +58,7 @@ class IPCInterface extends EventEmitter {
       print("[MPV_DART]: Socket Error occurred");
       print(e);
     }
-    emit("socket:error");
+    _events.add(Event(name: "socket:error"));
   }
 
   /// Handles the data received by MPV over the ipc socket\
@@ -97,7 +103,7 @@ class IPCInterface extends EventEmitter {
 
         // events are handled the old-fashioned way
         else {
-          emit('message', null, jsonDecode(message));
+          _events.add(Event(name: "message", data: jsonDecode(message)));
         }
       }
     });
