@@ -85,6 +85,12 @@ extension PlaylistPositionChangeModeExtension on PlaylistPositionChangeMode {
   get name => toString().split(".").last;
 }
 
+class OtherProcess {
+  String executable;
+  List<String> arguments = [];
+  OtherProcess({required this.executable, this.arguments = const []});
+}
+
 class MPVPlayer extends EventEmitter {
   List<String> mpvArgs;
   bool debug;
@@ -96,19 +102,24 @@ class MPVPlayer extends EventEmitter {
   String? binary;
   late IPCInterface socket;
   late ErrorHandler _errorHandler;
+  bool useExternalPlayer;
+  OtherProcess? externalProcess;
+  int retries;
 
   Process? _mpvPlayer;
 
-  MPVPlayer({
-    this.mpvArgs = const [],
-    this.debug = false,
-    this.verbose = false,
-    this.socketURI = '/tmp/MPV_Dart.sock',
-    this.audioOnly = false,
-    this.autoRestart = true,
-    this.timeUpdate = 1,
-    this.binary,
-  }) {
+  MPVPlayer(
+      {this.mpvArgs = const [],
+      this.debug = false,
+      this.verbose = false,
+      this.socketURI = '/tmp/MPV_Dart.sock',
+      this.audioOnly = false,
+      this.autoRestart = true,
+      this.timeUpdate = 1,
+      this.binary,
+      this.useExternalPlayer = false,
+      this.externalProcess,
+      this.retries = 5}) {
     socketURI =
         Platform.isWindows ? '\\\\.\\pipe\\mpvserver' : '/tmp/MPV_Dart.sock';
 
@@ -863,12 +874,34 @@ class MPVPlayer extends EventEmitter {
     return completer.future;
   }
 
+  Future<void> _startExternalPlayer() async {
+    final localExternalProcess = externalProcess;
+    if (localExternalProcess != null) {
+      _mpvPlayer = await Process.start(
+          localExternalProcess.executable, localExternalProcess.arguments);
+    }
+  }
+
   Future<void> _checkMPVIdleMode() async {
     Completer completer = Completer<bool>();
 
     // check if mpv went into idle mode and is ready to receive commands
     // Set up the socket connection
-    await socket.connect(socketURI);
+
+    for (var i = 1; i <= retries; i++) {
+      try {
+        await socket.connect(socketURI);
+        print("done");
+        break;
+      } catch (e) {
+        print("try again");
+        if (i >= retries) {
+          rethrow;
+        }
+      }
+      await Future.delayed(Duration(seconds: 1));
+    }
+
     // socket to check for the idle event to check if mpv fully loaded and
     // actually running
     Socket observeSocket = await Socket.connect(
@@ -954,12 +987,16 @@ class MPVPlayer extends EventEmitter {
       // STARTING NEW MPV INSTANCE
       // =========================
 
-      // check if the binary is actually available
-      await utils.checkMpvBinary(binary);
-      // check for the corrrect ipc command
-      const ipcCommand = "--input-ipc-server";
+      if (!useExternalPlayer) {
+        // check if the binary is actually available
+        await utils.checkMpvBinary(binary);
+        // check for the corrrect ipc command
+        const ipcCommand = "--input-ipc-server";
 
-      await _createMPVSubProcess(ipcCommand, mpv_args);
+        await _createMPVSubProcess(ipcCommand, mpv_args);
+      } else {
+        await _startExternalPlayer();
+      }
       await _checkMPVIdleMode();
       instance_running = true;
     }
